@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>骰運迷宮 DICE DUNGEON</title>
+<title>骰運迷宮 DICE DUNGEON v2</title>
 <style>
 *{box-sizing:border-box}
 body{margin:0;background:#05070d;color:#7CFFB2;font-family:"Courier New","Noto Sans TC",monospace;min-height:100vh;display:flex;justify-content:center}
@@ -19,26 +19,28 @@ button{font:inherit;background:#0a1a14;color:#7CFFB2;border:2px solid #7CFFB2;pa
 button:hover{background:#7CFFB2;color:#05070d;box-shadow:0 0 14px #7CFFB2}
 button.pink{border-color:#ff4fd8;color:#ff4fd8}
 button.pink:hover{background:#ff4fd8;color:#05070d;box-shadow:0 0 14px #ff4fd8}
-button:disabled{opacity:.35;pointer-events:none}
+button.item{border-color:#ffd24f;color:#ffd24f}
+button.item:hover{background:#ffd24f;color:#05070d;box-shadow:0 0 14px #ffd24f}
 #dice{font-size:64px;text-align:center;color:#ffd24f;text-shadow:0 0 14px #ffd24f;height:80px;line-height:80px}
 .shake{animation:sh .4s}
 @keyframes sh{25%{transform:translateX(-6px) rotate(-8deg)}75%{transform:translateX(6px) rotate(8deg)}}
-#log{height:150px;overflow:auto;font-size:14px;line-height:1.6}
+#log{height:160px;overflow:auto;font-size:14px;line-height:1.6}
 #log p{margin:2px 0}
 .bad{color:#ff6a6a}.good{color:#ffd24f}.mag{color:#ff4fd8}
-.relics{font-size:13px;color:#9cf;min-height:20px}
-.row{display:flex;gap:8px}
+.relics{font-size:13px;color:#9cf;min-height:20px;margin-top:6px}
+.ach{font-size:13px;line-height:1.7}
+.off{opacity:.4}
 </style>
 </head>
 <body>
 <div id="app">
-  <h1>🎲 骰運迷宮</h1>
+  <h1>🎲 骰運迷宮 v2</h1>
   <div class="sub">DICE DUNGEON · 每一次都不一樣</div>
   <div id="screen"></div>
 </div>
 
 <script>
-// ===== 隨機數(可固定種子,做每日挑戰) =====
+// ===== 隨機數 =====
 function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296}}
 let rnd=Math.random;
 const R=(n)=>Math.floor(rnd()*n);
@@ -47,10 +49,11 @@ const d=(n)=>R(n)+1;
 function seedFromDate(){const t=new Date();return t.getFullYear()*10000+(t.getMonth()+1)*100+t.getDate()}
 
 // ===== 存檔 =====
-let meta=JSON.parse(localStorage.getItem("dd_meta")||"null")||{dust:0,hp:0,luck:0,gold:0,best:0,runs:0};
+const DEF={dust:0,hp:0,luck:0,gold:0,atk:0,item:0,best:0,runs:0,ach:[]};
+let meta=Object.assign({},DEF,JSON.parse(localStorage.getItem("dd_meta")||"{}"));
 const save=()=>localStorage.setItem("dd_meta",JSON.stringify(meta));
 
-// ===== 資料 =====
+// ===== 遺物 =====
 const RELICS=[
  {n:"🍀 四葉草",d:"運氣 +2",f:r=>r.luck+=2},
  {n:"🗡️ 生鏽短劍",d:"攻擊 +2",f:r=>r.atk+=2},
@@ -58,46 +61,99 @@ const RELICS=[
  {n:"🩸 吸血牙",d:"擊敗敵人回復 3 血",f:r=>r.vamp=(r.vamp||0)+3},
  {n:"👑 邁達斯手套",d:"獲得金幣 +50%",f:r=>r.midas=true},
  {n:"🛡️ 破舊盾牌",d:"受到傷害 -1",f:r=>r.armor=(r.armor||0)+1},
- {n:"🎰 作弊骰子",d:"每次擲骰至少 +1",f:r=>r.cheat=(r.cheat||0)+1},
- {n:"🔮 水晶球",d:"可以看到敵人的血量",f:r=>r.crystal=true},
- {n:"💣 小炸彈",d:"每場戰鬥開始時,敵人 -5 血",f:r=>r.bomb=true},
- {n:"🧲 磁鐵",d:"每進入新樓層獲得 3 金幣",f:r=>r.magnet=(r.magnet||0)+3},
+ {n:"🎰 作弊骰子",d:"每次擲骰 +1",f:r=>r.cheat=(r.cheat||0)+1},
+ {n:"🔮 水晶球",d:"看得到敵人血量",f:r=>r.crystal=true},
+ {n:"💣 小炸彈",d:"戰鬥開始敵人 -5 血",f:r=>r.bomb=true},
+ {n:"🧲 磁鐵",d:"每層獲得 3 金幣",f:r=>r.magnet=(r.magnet||0)+3},
+ {n:"🪶 復活羽毛",d:"死亡時復活一次(回復一半血)",f:r=>r.revive=true},
+ {n:"🌵 荊棘甲",d:"被打時反彈 2 傷害",f:r=>r.thorns=(r.thorns||0)+2},
+ {n:"🧪 解毒草",d:"免疫毒",f:r=>r.nopoison=true},
+ {n:"⚡ 狂戰士項鍊",d:"骰 18 以上就暴擊",f:r=>r.crit=18},
+ {n:"🎒 戰利品袋",d:"立刻獲得 2 瓶藥水和 1 個炸彈",f:r=>{r.items.potion+=2;r.items.bomb++}},
+ {n:"🏷️ 折價券",d:"商店商品 -30%",f:r=>r.sale=true},
+ {n:"🦶 輕盈鞋",d:"逃跑一定成功",f:r=>r.flee=true},
+ {n:"🌙 月光石",d:"每層開始回復 1 血",f:r=>r.regen=(r.regen||0)+1},
 ];
-const PRE=["暴躁的","發光的","半透明的","超大隻的","打瞌睡的","會跳舞的","迷路的","咖啡因過量的"];
-const NOUN=["史萊姆","骷髏","幽靈","機器人","蘑菇人","鴿子","地精","BUG"];
-const BOSS=["混沌骰神","無限迴圈龍","404 魔王","隨機之眼"];
+
+// ===== 敵人 =====
+const PRE=["暴躁的","發光的","半透明的","超大隻的","打瞌睡的","會跳舞的","迷路的","咖啡因過量的","生鏽的","會飛的"];
+const NOUN=["史萊姆","骷髏","幽靈","機器人","蘑菇人","鴿子","地精","BUG","蝙蝠","仙人掌"];
+const TRAITS={poison:"☠️ 毒:被打會中毒",thick:"🪨 厚皮:你的傷害 -2",rage:"😡 狂暴:半血以下傷害 +2",thief:"🕵️ 小偷:被打會被偷金幣"};
+const BOSS=[
+ {n:"混沌骰神",t:"rage"},{n:"無限迴圈龍",t:"poison"},{n:"404 魔王",t:"thick"},{n:"隨機之眼",t:"thief"},{n:"記憶體吞噬者",t:"rage"}
+];
+
+// ===== 道具 =====
+const ITEMS={
+ potion:{n:"🧪 藥水",d:"回復 10 血",p:10},
+ bomb:{n:"💥 炸彈",d:"對敵人造成 8 傷害",p:12},
+ charm:{n:"🍀 幸運符",d:"下一次擲骰必為 20",p:16},
+};
+
+// ===== 成就 =====
+const ACH=[
+ {id:"f5",n:"🥉 初學者:到達第 5 層",c:r=>r.floor>=5,b:3},
+ {id:"f10",n:"🥈 探險家:到達第 10 層",c:r=>r.floor>=10,b:6},
+ {id:"f15",n:"🥇 勇者:到達第 15 層",c:r=>r.floor>=15,b:10},
+ {id:"f20",n:"👑 傳說:到達第 20 層",c:r=>r.floor>=20,b:20},
+ {id:"rich",n:"💰 小富翁:持有 100 金幣",c:r=>r.maxGold>=100,b:5},
+ {id:"relic6",n:"🎒 收藏家:持有 6 個遺物",c:r=>r.relics.length>=6,b:5},
+ {id:"crit5",n:"💥 暴擊狂:一局暴擊 5 次",c:r=>r.crits>=5,b:5},
+ {id:"kill15",n:"⚔️ 殺手:一局擊敗 15 隻敵人",c:r=>r.kills>=15,b:6},
+ {id:"boss2",n:"🐲 屠龍者:擊敗 2 隻 Boss",c:r=>r.bosses>=2,b:8},
+];
 
 let run=null,enemy=null;
 const $=(id)=>document.getElementById(id);
 const screen=$("screen");
 
 function log(t,c=""){const l=$("log");if(!l)return;l.innerHTML+=`<p class="${c}">${t}</p>`;l.scrollTop=l.scrollHeight}
-function gold(n){if(run.midas)n=Math.ceil(n*1.5);run.gold+=n;return n}
+function gold(n){if(run.midas)n=Math.ceil(n*1.5);run.gold+=n;run.maxGold=Math.max(run.maxGold,run.gold);return n}
 function hurt(n){n=Math.max(1,n-(run.armor||0));run.hp-=n;return n}
-function roll(sides=20){let v=d(sides)+(run.cheat||0);return Math.min(v,sides)}
+function dead(){
+ if(run.hp<=0){
+  if(run.revive){run.revive=false;run.hp=Math.ceil(run.max/2);run.psn=0;log("🪶 復活羽毛發光,你復活了!","good");return false}
+  return true;
+ }
+ return false;
+}
+function roll(sides=20){
+ if(run.nextRoll){const v=run.nextRoll;run.nextRoll=0;return v}
+ return Math.min(d(sides)+(run.cheat||0),sides);
+}
 
-// ===== 畫面:主選單 =====
+// ===== 主選單 =====
+const UPS=[
+ {k:"hp",n:"❤️ 起始血量 +4"},
+ {k:"luck",n:"🍀 起始運氣 +1"},
+ {k:"gold",n:"💰 起始金幣 +10"},
+ {k:"atk",n:"⚔️ 起始攻擊 +1"},
+ {k:"item",n:"🧪 起始藥水 +1"},
+];
+const cost=(k)=>5+meta[k]*5;
 function menu(){
  screen.innerHTML=`
  <div class="panel">
-  <p>✨ 星塵:<b class="good">${meta.dust}</b> ｜ 🏆 最佳樓層:<b class="good">${meta.best}</b> ｜ 遊玩次數:${meta.runs}</p>
+  <p>✨ 星塵:<b class="good">${meta.dust}</b> ｜ 🏆 最佳:<b class="good">${meta.best}</b> 層 ｜ 遊玩:${meta.runs} 次</p>
  </div>
  <div class="panel">
   <p class="mag">永久升級(用星塵購買)</p>
-  <button onclick="buyUp('hp')">❤️ 起始血量 +4(Lv.${meta.hp}) — ${cost('hp')} 星塵</button>
-  <button onclick="buyUp('luck')">🍀 起始運氣 +1(Lv.${meta.luck}) — ${cost('luck')} 星塵</button>
-  <button onclick="buyUp('gold')">💰 起始金幣 +10(Lv.${meta.gold}) — ${cost('gold')} 星塵</button>
+  ${UPS.map(u=>`<button onclick="buyUp('${u.k}')">${u.n}(Lv.${meta[u.k]}) — ${cost(u.k)} 星塵</button>`).join("")}
+ </div>
+ <div class="panel">
+  <p class="mag">成就 (${meta.ach.length}/${ACH.length})</p>
+  <div class="ach">${ACH.map(a=>`<div class="${meta.ach.includes(a.id)?"good":"off"}">${a.n}(+${a.b}✨)</div>`).join("")}</div>
  </div>
  <button class="pink" onclick="start(false)">▶ 開始冒險(完全隨機)</button>
  <button class="pink" onclick="start(true)">📅 今日挑戰(今天大家的迷宮都一樣)</button>`;
 }
-const cost=(k)=>5+meta[k]*5;
 function buyUp(k){if(meta.dust>=cost(k)){meta.dust-=cost(k);meta[k]++;save()}menu()}
 
-// ===== 開始一局 =====
+// ===== 開始 =====
 function start(daily){
  rnd=daily?mulberry32(seedFromDate()):Math.random;
- run={hp:20+meta.hp*4,max:20+meta.hp*4,gold:meta.gold*10,luck:meta.luck,atk:0,floor:0,relics:[],daily};
+ run={hp:20+meta.hp*4,max:20+meta.hp*4,gold:meta.gold*10,maxGold:meta.gold*10,luck:meta.luck,atk:meta.atk,floor:0,relics:[],daily,
+  items:{potion:meta.item,bomb:0,charm:0},psn:0,egg:0,crits:0,kills:0,bosses:0,nextRoll:0};
  screen.innerHTML=`
  <div class="panel" id="hud"></div>
  <div class="panel"><div id="dice">🎲</div></div>
@@ -107,8 +163,10 @@ function start(daily){
  nextFloor();
 }
 function hud(){
- $("hud").innerHTML=`<div class="stats"><div>❤️ ${run.hp}/${run.max}</div><div>💰 ${run.gold}</div><div>🍀 ${run.luck}</div><div>⚔️ ${run.atk}</div><div>🏛️ 第 ${run.floor} 層</div><div></div></div>
+ const it=run.items;
+ $("hud").innerHTML=`<div class="stats"><div>❤️ ${run.hp}/${run.max}${run.psn>0?" ☠️":""}</div><div>💰 ${run.gold}</div><div>🍀 ${run.luck}</div><div>⚔️ ${run.atk}</div><div>🏛️ 第 ${run.floor} 層</div><div>${run.egg>0?"🥚 "+run.egg:""}</div></div>
  <div class="bar"><i style="width:${Math.max(0,run.hp/run.max*100)}%"></i></div>
+ <div class="relics">道具:🧪${it.potion} 💥${it.bomb} 🍀${it.charm}</div>
  <div class="relics">${run.relics.map(r=>r.n).join(" ")||"(還沒有遺物)"}</div>`;
 }
 function setChoices(list){
@@ -119,16 +177,35 @@ function setChoices(list){
 
 // ===== 樓層 =====
 function nextFloor(){
- if(run.hp<=0)return die();
+ if(run.hp<=0&&dead())return die();
  run.floor++;
- if(run.magnet){run.gold+=run.magnet}
+ if(run.magnet)run.gold+=run.magnet;
+ if(run.regen)run.hp=Math.min(run.max,run.hp+run.regen);
+ if(run.egg>0){
+  run.egg--;
+  if(run.egg===0){
+   const p=pick([["小龍","攻擊 +2",()=>run.atk+=2],["小貓","運氣 +3",()=>run.luck+=3],["小烏龜","最大血量 +8",()=>{run.max+=8;run.hp+=8}]]);
+   p[2]();log(`🥚 蛋孵化了!是一隻${p[0]},${p[1]}!`,"good");
+  }
+ }
  if(run.floor%5===0){log(`⚠️ 第 ${run.floor} 層:Boss 房間!`,"bad");return fight(true)}
- const types=[["⚔️ 戰鬥門",()=>fight(false)],["🎁 寶箱門",chest],["❓ 神祕事件門",event],["🎰 賭局門",gamble],["🛒 商店門",shop],["🛏️ 營火門",rest]];
- const w=[3,2,3,2,1,1.5];
+ const types=[
+  ["⚔️ 戰鬥門",()=>fight(false),3],
+  ["🎁 寶箱門",chest,2],
+  ["❓ 神祕事件門",event,3],
+  ["🎰 賭局門",gamble,2],
+  ["🛒 商店門",shop,1.5],
+  ["🛏️ 營火門",rest,1.5],
+  ["🔨 鍛造台",forge,1],
+  ["😈 詛咒祭壇",altar,run.floor>=3?1:0],
+  ["🌀 傳送門",portal,1],
+  ["🥚 神祕蛋",egg,run.egg>0?0:1],
+ ];
  const doors=[];
  while(doors.length<3){
-  let tot=w.reduce((a,b)=>a+b),x=rnd()*tot,i=0;
-  while(x>w[i]){x-=w[i];i++}
+  const tot=types.reduce((a,t)=>a+t[2],0);
+  let x=rnd()*tot,i=0;
+  while(x>types[i][2]){x-=types[i][2];i++}
   if(!doors.includes(i))doors.push(i);
  }
  log(`—— 第 ${run.floor} 層:選一扇門 ——`);
@@ -138,34 +215,59 @@ function nextFloor(){
 // ===== 戰鬥 =====
 function fight(boss){
  const f=run.floor;
- enemy={name:boss?pick(BOSS):pick(PRE)+pick(NOUN),hp:(boss?25:6)+f*3+R(4),dmg:(boss?3:1)+Math.floor(f*.7),boss};
+ let name,trait=null;
+ if(boss){const b=pick(BOSS);name=b.n;trait=b.t}
+ else{name=pick(PRE)+pick(NOUN);if(f>=3&&rnd()<.4)trait=pick(Object.keys(TRAITS))}
+ const hp=(boss?25:6)+f*3+R(4);
+ enemy={name,hp,max:hp,dmg:(boss?3:1)+Math.floor(f*.7),boss,trait};
  if(run.bomb){enemy.hp-=5;log("💣 小炸彈爆炸!敵人 -5 血","good")}
- log(`遇到 <b>${enemy.name}</b>!`+(run.crystal?`(血量 ${enemy.hp})`:""),boss?"bad":"");
+ log(`遇到 <b>${name}</b>!`+(run.crystal?`(血量 ${enemy.hp})`:""),boss?"bad":"");
+ if(trait)log(TRAITS[trait],"mag");
  fightUI();
 }
 function fightUI(){
- setChoices([["🎲 擲骰攻擊",attack],["🏃 嘗試逃跑(d20 ≥ 10)",flee]]);
+ const list=[["🎲 擲骰攻擊",attack],["🏃 嘗試逃跑"+(run.flee?"(必定成功)":"(d20 ≥ 10)"),flee]];
+ Object.keys(ITEMS).forEach(k=>{if(run.items[k]>0)list.push([`${ITEMS[k].n} ×${run.items[k]} — ${ITEMS[k].d}`,()=>useItem(k),"item"])});
+ setChoices(list);
+}
+function useItem(k){
+ run.items[k]--;
+ if(k==="potion"){run.hp=Math.min(run.max,run.hp+10);log("🧪 回復 10 血","good")}
+ if(k==="bomb"){enemy.hp-=8;log("💥 炸彈造成 8 傷害!","good");if(enemy.hp<=0)return win()}
+ if(k==="charm"){run.nextRoll=20;log("🍀 下一次擲骰必為 20!","good")}
+ fightUI();
 }
 function diceAnim(v,cb){
  const el=$("dice");el.classList.remove("shake");void el.offsetWidth;el.classList.add("shake");
- let n=0;const t=setInterval(()=>{el.textContent=d(20);if(++n>8){clearInterval(t);el.textContent=v;cb()}},45);
+ let n=0;const t=setInterval(()=>{el.textContent=Math.floor(Math.random()*20)+1;if(++n>8){clearInterval(t);el.textContent=v;cb()}},45);
+}
+function enemyTurn(){
+ let dmg=enemy.dmg+R(2);
+ if(enemy.trait==="rage"&&enemy.hp<enemy.max/2)dmg+=2;
+ const h=hurt(dmg);
+ log(`${enemy.name} 反擊,你受到 ${h} 傷害`+(run.crystal?`(敵人剩 ${enemy.hp})`:""),"bad");
+ if(run.thorns){enemy.hp-=run.thorns;log(`🌵 荊棘反彈 ${run.thorns} 傷害`,"good");if(enemy.hp<=0)return"win"}
+ if(enemy.trait==="poison"&&!run.nopoison&&run.psn<=0){run.psn=3;log("☠️ 你中毒了!","bad")}
+ if(enemy.trait==="thief"&&run.gold>0){const s=Math.min(run.gold,2+R(4));run.gold-=s;log(`🕵️ 被偷走 ${s} 金幣`,"bad")}
+ if(run.psn>0){run.hp-=1;run.psn--;log("☠️ 毒發作,-1 血","bad")}
+ return null;
 }
 function attack(){
  setChoices([]);
  const v=roll();
  diceAnim(v,()=>{
-  let dmg;
   if(v===1){const h=hurt(enemy.dmg*2);log(`🎲 ${v}:大失敗!你絆倒了,受到 ${h} 傷害`,"bad")}
   else{
-   dmg=Math.ceil((v+run.luck)/4)+run.atk;
-   if(v>=19){dmg*=3;log(`🎲 ${v}:💥 暴擊!造成 ${dmg} 傷害`,"good")}
-   else log(`🎲 ${v}:造成 ${dmg} 傷害`);
+   let dmg=Math.ceil((v+run.luck)/4)+run.atk;
+   if(v>=(run.crit||19)){dmg*=3;run.crits++;log(`🎲 ${v}:💥 暴擊!`,"good")}
+   if(enemy.trait==="thick")dmg=Math.max(1,dmg-2);
+   log(`🎲 ${v}:造成 ${dmg} 傷害`);
    enemy.hp-=dmg;
   }
   if(enemy.hp<=0)return win();
-  const h=hurt(enemy.dmg+R(2));
-  log(`${enemy.name} 反擊,你受到 ${h} 傷害`+(run.crystal?`(敵人剩 ${enemy.hp})`:""),"bad");
-  if(run.hp<=0)return die();
+  const r=enemyTurn();
+  if(r==="win")return win();
+  if(dead())return die();
   fightUI();
  });
 }
@@ -173,49 +275,96 @@ function flee(){
  setChoices([]);
  const v=roll();
  diceAnim(v,()=>{
-  if(v+run.luck>=10){log(`🎲 ${v}:成功逃跑!`);nextFloor()}
-  else{const h=hurt(enemy.dmg);log(`🎲 ${v}:逃跑失敗,受到 ${h} 傷害`,"bad");if(run.hp<=0)return die();fightUI()}
+  if(run.flee||v+run.luck>=10){log(`🎲 ${v}:成功逃跑!`);nextFloor()}
+  else{
+   const h=hurt(enemy.dmg);log(`🎲 ${v}:逃跑失敗,受到 ${h} 傷害`,"bad");
+   if(dead())return die();
+   fightUI();
+  }
  });
 }
 function win(){
+ run.kills++;
  const g=gold(3+R(5)+run.floor+(enemy.boss?15:0));
  log(`✅ 擊敗 ${enemy.name}!獲得 ${g} 金幣`,"good");
  if(run.vamp){run.hp=Math.min(run.max,run.hp+run.vamp);log(`🩸 吸血回復 ${run.vamp}`,"good")}
- if(enemy.boss){log("你獲得了 Boss 的遺物!","mag");return relicChoice(()=>nextFloor())}
+ if(!enemy.boss&&rnd()<.25){const k=pick(Object.keys(ITEMS));run.items[k]++;log(`掉落了 ${ITEMS[k].n}!`,"mag")}
+ if(enemy.boss){run.bosses++;log("你獲得了 Boss 的遺物!","mag");return relicChoice(()=>nextFloor())}
  nextFloor();
 }
 
 // ===== 遺物 =====
 function randRelics(n){
- const pool=RELICS.slice(),out=[];
+ const have=run.relics.map(r=>r.n);
+ const pool=RELICS.filter(r=>!have.includes(r.n)),out=[];
  while(out.length<n&&pool.length)out.push(pool.splice(R(pool.length),1)[0]);
  return out;
 }
 function relicChoice(done){
- setChoices(randRelics(3).map(r=>[`${r.n}<br><small>${r.d}</small>`,()=>{r.f(run);run.relics.push(r);log(`獲得 ${r.n}`,"mag");done()},"pink"]));
+ const l=randRelics(3);
+ if(!l.length){log("遺物都拿光了!給你 30 金幣","good");gold(30);return done()}
+ setChoices(l.map(r=>[`${r.n}<br><small>${r.d}</small>`,()=>{r.f(run);run.relics.push(r);log(`獲得 ${r.n}`,"mag");done()},"pink"]));
 }
 
 // ===== 房間 =====
 function chest(){
- const v=roll();
  setChoices([]);
+ const v=roll();
  diceAnim(v,()=>{
   if(v+run.luck>=18){log(`🎲 ${v}:稀有寶箱!`,"good");relicChoice(()=>nextFloor())}
-  else if(v===1){const h=hurt(3+Math.floor(run.floor/2));log(`🎲 ${v}:寶箱是陷阱!受到 ${h} 傷害`,"bad");nextFloor()}
+  else if(v===1){const h=hurt(3+Math.floor(run.floor/2));log(`🎲 ${v}:寶箱是陷阱!受到 ${h} 傷害`,"bad");if(dead())return die();nextFloor()}
+  else if(v>=12){const k=pick(Object.keys(ITEMS));run.items[k]++;log(`🎲 ${v}:找到 ${ITEMS[k].n}!`,"good");nextFloor()}
   else{const g=gold(5+R(10)+run.floor);log(`🎲 ${v}:找到 ${g} 金幣`,"good");nextFloor()}
  });
 }
 function rest(){
  const h=Math.ceil(run.max*.3);
- setChoices([[`🔥 休息(回復 ${h} 血)`,()=>{run.hp=Math.min(run.max,run.hp+h);log(`回復 ${h} 血`,"good");nextFloor()}],
+ setChoices([[`🔥 休息(回復 ${h} 血並解毒)`,()=>{run.hp=Math.min(run.max,run.hp+h);run.psn=0;log(`回復 ${h} 血`,"good");nextFloor()}],
   ["🔨 磨利武器(攻擊 +1)",()=>{run.atk++;log("攻擊 +1","good");nextFloor()}]]);
 }
+function forge(){
+ log("🔨 鐵匠:「要強化嗎?」","mag");
+ const p=15+run.floor;
+ setChoices([
+  [`⚔️ 強化武器(攻擊 +1)— ${p}💰`,()=>{if(run.gold<p){log("金幣不夠!","bad");return}run.gold-=p;run.atk++;log("攻擊 +1","good");nextFloor()}],
+  [`🛡️ 強化護甲(減傷 +1)— ${p}💰`,()=>{if(run.gold<p){log("金幣不夠!","bad");return}run.gold-=p;run.armor=(run.armor||0)+1;log("減傷 +1","good");nextFloor()}],
+  ["🚪 離開",nextFloor]]);
+}
+function altar(){
+ log("😈 祭壇低語:「用生命換力量吧……」","mag");
+ setChoices([
+  ["接受詛咒:最大血量 -6,獲得一個遺物",()=>{
+    if(run.max<=12){log("你太虛弱,祭壇拒絕了你。","bad");return nextFloor()}
+    run.max-=6;run.hp=Math.min(run.hp,run.max);log("最大血量 -6","bad");relicChoice(()=>nextFloor())
+  },"pink"],
+  ["拒絕",nextFloor]]);
+}
+function portal(){
+ log("🌀 一道傳送門在旋轉,不知道會通往哪裡。","mag");
+ setChoices([["進入傳送門",()=>{
+  const v=d(6);
+  if(v<=2){const h=hurt(4);log(`🎲 ${v}:空間亂流!受到 ${h} 傷害`,"bad");if(dead())return die();}
+  else{
+   let skip=v-2;let s=0;
+   while(skip>0&&(run.floor+1)%5!==0){run.floor++;skip--;s++}
+   const g=gold(s*8);log(`🎲 ${v}:跳過 ${s} 層,獲得 ${g} 金幣`,"good");
+  }
+  nextFloor();
+ }],["不進去",nextFloor]]);
+}
+function egg(){
+ log("🥚 你發現一顆溫暖的蛋。","mag");
+ setChoices([["帶著它(3 層後孵化)",()=>{run.egg=3;log("蛋放進背包了。","good");nextFloor()}],["放著不管",nextFloor]]);
+}
 function shop(){
- const items=randRelics(3).map(r=>({r,p:12+R(10)}));
- const draw=()=>setChoices([...items.map(it=>[`${it.r.n} — ${it.p}💰<br><small>${it.r.d}</small>`,()=>{
+ const stock=[];
+ const disc=run.sale?.7:1;
+ randRelics(2).forEach(r=>stock.push({l:`${r.n}<br><small>${r.d}</small>`,p:Math.ceil((12+R(10))*disc),f:()=>{r.f(run);run.relics.push(r)},pink:1}));
+ Object.keys(ITEMS).sort(()=>rnd()-.5).slice(0,2).forEach(k=>stock.push({l:`${ITEMS[k].n}<br><small>${ITEMS[k].d}</small>`,p:Math.ceil(ITEMS[k].p*disc),f:()=>run.items[k]++}));
+ const draw=()=>setChoices([...stock.map(it=>[`${it.l} — ${it.p}💰`,()=>{
    if(run.gold<it.p){log("金幣不夠!","bad");return}
-   run.gold-=it.p;it.r.f(run);run.relics.push(it.r);items.splice(items.indexOf(it),1);log(`購買 ${it.r.n}`,"mag");draw()
-  },"pink"]),["🚪 離開商店",nextFloor]]);
+   run.gold-=it.p;it.f();stock.splice(stock.indexOf(it),1);log("購買成功","mag");draw()
+  },it.pink?"pink":"item"]),["🚪 離開商店",nextFloor]]);
  log("🛒 神祕商人:「看看吧,隨便挑。」");draw();
 }
 function gamble(){
@@ -229,35 +378,46 @@ function gamble(){
    setChoices([]);
    $("dice").style.fontSize="48px";$("dice").textContent=s.join(" ");
    const same=s[0]===s[1]&&s[1]===s[2];
-   if(same&&s[0]==="💀"){const h=hurt(8);log(`${s.join("")} 三個骷髏!受到 ${h} 傷害`,"bad")}
+   let died=false;
+   if(same&&s[0]==="💀"){const h=hurt(8);log(`${s.join("")} 三個骷髏!受到 ${h} 傷害`,"bad");died=dead()}
    else if(same){const g=gold(40);log(`${s.join("")} 大獎!獲得 ${g} 金幣`,"good")}
    else if(new Set(s).size===2){const g=gold(15);log(`${s.join("")} 兩個一樣,獲得 ${g} 金幣`,"good")}
    else log(`${s.join("")} 什麼都沒中……`);
-   setTimeout(()=>{$("dice").style.fontSize="";$("dice").textContent="🎲";nextFloor()},900);
+   setTimeout(()=>{$("dice").style.fontSize="";$("dice").textContent="🎲";died?die():nextFloor()},900);
   }],["🚶 不玩了",nextFloor]]);
 }
+
+// ===== 事件 =====
 const EVENTS=[
  {t:"你看到一個發光的噴泉。",o:[["喝一口",()=>{if(rnd()<.6){run.max+=3;run.hp+=3;log("最大血量 +3!","good")}else{const h=hurt(4);log(`有毒!受到 ${h} 傷害`,"bad")}}],["離開",()=>{}]]},
- {t:"一隻貓咪坐在路中間,牠看起來很聰明。",o:[["摸摸牠",()=>{run.luck++;log("貓咪發出呼嚕聲,運氣 +1","good")}],["給牠 8 金幣",()=>{if(run.gold>=8){run.gold-=8;run.atk++;log("貓咪教你一招,攻擊 +1","good")}else log("你沒有那麼多錢……","bad")}]]},
+ {t:"一隻貓咪坐在路中間,牠看起來很聰明。",o:[["摸摸牠",()=>{run.luck++;log("貓咪呼嚕嚕,運氣 +1","good")}],["給牠 8 金幣",()=>{if(run.gold>=8){run.gold-=8;run.atk++;log("貓咪教你一招,攻擊 +1","good")}else log("你沒有那麼多錢……","bad")}]]},
  {t:"地上有一顆黑色的骰子,它在顫動。",o:[["撿起來擲一次",()=>{const v=d(6);if(v>=4){const g=gold(v*5);log(`擲出 ${v},獲得 ${g} 金幣`,"good")}else{const h=hurt(v+1);log(`擲出 ${v},受到 ${h} 傷害`,"bad")}}],["不碰",()=>{}]]},
- {t:"一個迷路的程式設計師向你求救。",o:[["幫他修 BUG",()=>{const g=gold(12);run.luck++;log(`他很感謝你,給你 ${g} 金幣,運氣 +1`,"good")}],["假裝沒看到",()=>{log("你走開了……")}]]},
+ {t:"一個迷路的程式設計師向你求救。",o:[["幫他修 BUG",()=>{const g=gold(12);run.luck++;log(`他給你 ${g} 金幣,運氣 +1`,"good")}],["假裝沒看到",()=>{log("你走開了……")}]]},
  {t:"牆上有一個寫著「用血換力量」的祭壇。",o:[["獻上 6 點血",()=>{if(run.hp>6){hurt(6);run.atk+=2;log("攻擊 +2!","good")}else log("你太虛弱了……","bad")}],["拒絕",()=>{}]]},
+ {t:"一位老奶奶在路邊賣便當。",o:[["花 6 金幣買便當",()=>{if(run.gold>=6){run.gold-=6;run.hp=Math.min(run.max,run.hp+12);log("好吃!回復 12 血","good")}else log("沒錢……","bad")}],["幫她搬東西",()=>{run.luck++;log("她笑了,運氣 +1","good")}]]},
+ {t:"你發現一面會說話的鏡子。",o:[["問它未來",()=>{if(rnd()<.5){const k=pick(Object.keys(ITEMS));run.items[k]++;log(`鏡子送你 ${ITEMS[k].n}`,"good")}else{run.luck=Math.max(0,run.luck-1);log("鏡子說你很倒楣,運氣 -1","bad")}}],["打破它",()=>{const g=gold(10);const h=hurt(2);log(`碎片割傷你 ${h} 血,但撿到 ${g} 金幣`)}]]},
+ {t:"一隻機器鴿子丟下一個包裹。",o:[["打開",()=>{const v=d(3);if(v===1){const k="bomb";run.items[k]++;log("是一顆炸彈(道具)!","good")}else if(v===2){const g=gold(18);log(`裡面有 ${g} 金幣`,"good")}else{run.psn=3;log("是臭氣彈,你中毒了!","bad")}}],["丟掉",()=>{}]]},
+ {t:"三個小精靈邀請你玩猜拳。",o:[["參加",()=>{const a=d(3),b=d(3);if(a===b)log("平手,什麼都沒發生。");else if((a-b+3)%3===1){const g=gold(20);log(`你贏了!獲得 ${g} 金幣`,"good")}else{const h=hurt(3);log(`你輸了,受到 ${h} 傷害`,"bad")}}],["婉拒",()=>{}]]},
+ {t:"你發現一間圖書館,書在自己飛。",o:[["讀戰鬥書",()=>{run.atk++;log("攻擊 +1","good")}],["讀運氣書",()=>{run.luck+=2;log("運氣 +2","good")}],["讀醫療書",()=>{run.max+=2;run.hp+=2;log("最大血量 +2","good")}]]},
 ];
 function event(){
  const e=pick(EVENTS);
  log("❓ "+e.t,"mag");
- setChoices(e.o.map(([t,f])=>[t,()=>{f();if(run.hp<=0)return die();nextFloor()}]));
+ setChoices(e.o.map(([t,f])=>[t,()=>{f();if(dead())return die();nextFloor()}]));
 }
 
 // ===== 死亡 =====
 function die(){
- const dust=run.floor*2+Math.floor(run.gold/10)+run.relics.length;
+ let dust=run.floor*2+Math.floor(run.gold/10)+run.relics.length;
+ const got=[];
+ ACH.forEach(a=>{if(!meta.ach.includes(a.id)&&a.c(run)){meta.ach.push(a.id);dust+=a.b;got.push(a.n)}});
  meta.dust+=dust;meta.runs++;meta.best=Math.max(meta.best,run.floor);save();
  screen.innerHTML=`
  <div class="panel" style="text-align:center">
   <h2 class="bad">💀 冒險結束</h2>
-  <p>到達:第 <b class="good">${run.floor}</b> 層</p>
+  <p>到達:第 <b class="good">${run.floor}</b> 層 ｜ 擊敗 ${run.kills} 隻 ｜ 暴擊 ${run.crits} 次</p>
   <p>遺物:${run.relics.map(r=>r.n).join(" ")||"無"}</p>
+  ${got.length?`<p class="mag">🏅 新成就:<br>${got.join("<br>")}</p>`:""}
   <p>獲得星塵:<b class="mag">+${dust}</b> ✨</p>
  </div>
  <button class="pink" onclick="start(${run.daily})">🔁 再來一局</button>
